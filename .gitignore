@@ -54,7 +54,8 @@ notebooks/.ipynb_checkpoints/
 reports/
 outputs/
 logs/
-
+reports/runs/
+reports/figures/
 # ===============================
 # Docker
 # ===============================
@@ -74,3 +75,6 @@ Thumbs.db
 # ===============================
 tmp/
 .cache/
+
+# Keep small JSON reports tracked (optional)
+!reports/*.json
