@@ -1,15 +1,31 @@
-.git/
+# python
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# env/ide
 .venv/
-
-# Don't bake datasets/artifacts into image
-data/external/
-data/interim/
-data/processed/
-
-notebooks/
-reports/
+venv/
+.env
 .vscode/
-.idea/
 .DS_Store
+
+# git
+.git/
+
+# project heavy artifacts (never bake)
+data/
+outputs/
+reports/
+notebooks/
+
+# temp
+data/interim/duckdb_tmp/
+*.csv
+*.zip
+*.tar
+*.gz

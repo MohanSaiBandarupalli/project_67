@@ -2,42 +2,38 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main"]
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Poetry
+      - name: Install deps
         run: |
-          pip install poetry
-          poetry config virtualenvs.create false
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
 
-      - name: Install dependencies
-        run: |
-          poetry install --no-interaction --no-root
+      - name: Run tests
+        run: python -m pytest
 
-      - name: Run unit tests
-        run: |
-          pytest tests/unit
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Smoke import check
-        run: |
-          python - <<'EOF'
-          import ntg
-          import ntg.data
-          import ntg.features
-          import ntg.graph
-          import ntg.models
-          import ntg.evaluation
-          print("✅ Imports OK")
-          EOF
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ntg:ci

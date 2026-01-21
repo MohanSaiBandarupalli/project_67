@@ -1,0 +1,14 @@
+services:
+  ntg:
+    image: ntg:project_67
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      - ./reports:/app/reports
+      - ./configs:/app/configs:ro
+    environment:
+      - PYTHONUNBUFFERED=1
