@@ -1,0 +1,28 @@
+[project]
+name = "project-67"
+version = "0.1.0"
+description = ""
+authors = [
+    { name = "MohanSaiBandarupalli", email = "mb2279@njit.edu" }
+]
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pandas>=2.2,<3.0",
+    "pyarrow>=15,<30",
+    "numpy>=2.0,<3.0",
+    "duckdb (>=1.4.3,<2.0.0)"
+]
+
+# --- Poetry config (needed for src-layout packaging) ---
+[tool.poetry]
+packages = [{ include = "ntg", from = "src" }]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)"
+]

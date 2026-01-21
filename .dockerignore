@@ -1,0 +1,15 @@
+.git/
+__pycache__/
+*.pyc
+.venv/
+
+# Don't bake datasets/artifacts into image
+data/external/
+data/interim/
+data/processed/
+
+notebooks/
+reports/
+.vscode/
+.idea/
+.DS_Store

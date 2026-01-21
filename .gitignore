@@ -1,0 +1,75 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ===============================
+# Poetry / Virtual Environments
+# ===============================
+.venv/
+.env
+.env.*
+poetry.lock.backup
+
+# ===============================
+# Pytest / Coverage
+# ===============================
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ===============================
+# Data (VERY IMPORTANT)
+# ===============================
+data/external/
+data/interim/
+data/processed/
+
+# ===============================
+# DuckDB / Temp / Cache
+# ===============================
+*.duckdb
+*.duckdb.wal
+duckdb_tmp/
+data/interim/duckdb_tmp/
+
+# ===============================
+# Notebooks / Experiments
+# ===============================
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# ===============================
+# Reports / Generated Artifacts
+# ===============================
+reports/
+outputs/
+logs/
+
+# ===============================
+# Docker
+# ===============================
+*.log
+docker-compose.override.yml
+
+# ===============================
+# OS / Editor
+# ===============================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ===============================
+# Misc
+# ===============================
+tmp/
+.cache/

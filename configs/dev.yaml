@@ -1,0 +1,32 @@
+project:
+  name: "netflix-neural-taste-graph"
+  seed: 42
+
+paths:
+  data_external: "data/external"
+  data_processed: "data/processed"
+  runs_dir: "reports/runs"
+
+dataset:
+  movielens:
+    variant: "ml-25m"
+    ratings_path: "data/external/ml-25m/ratings.csv"
+    movies_path: "data/external/ml-25m/movies.csv"
+
+time:
+  # We'll simulate time using MovieLens timestamps.
+  churn_inactive_days: 30
+  churn_horizon_days: 90
+  drift_window_days: 14
+
+modeling:
+  embedding:
+    dim: 16
+    min_user_ratings: 20
+  churn_model:
+    type: "logreg"
+    test_size: 0.2
+
+revenue:
+  arpu_usd: 12.0
+  ltv_months_cap: 18
