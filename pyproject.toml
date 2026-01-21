@@ -1,21 +1,20 @@
 [project]
 name = "project-67"
 version = "0.1.0"
-description = ""
-authors = [
-    { name = "MohanSaiBandarupalli", email = "mb2279@njit.edu" }
-]
+description = "Netflix Neural Taste Graph (NTG) prototype: offline recommender + risk radar."
+authors = [{ name = "MohanSaiBandarupalli", email = "mb2279@njit.edu" }]
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "pandas>=2.2,<3.0",
-    "pyarrow>=15,<30",
-    "numpy>=2.0,<3.0",
-    "duckdb (>=1.4.3,<2.0.0)",
-    "scikit-learn (>=1.8.0,<2.0.0)"
+  "duckdb>=1.0.0",
+  "pandas>=2.3.0",
+  "pyarrow>=23.0.0",
+  "numpy>=2.0.0",
+  "scikit-learn>=1.5.0",
+  "scipy>=1.12.0",
+  "tqdm>=4.66.0",
 ]
 
-# --- Poetry config (needed for src-layout packaging) ---
 [tool.poetry]
 name = "project-67"
 version = "0.1.0"
@@ -23,3 +22,11 @@ description = "Netflix Neural Taste Graph (NTG) prototype: offline recommender +
 authors = ["MohanSaiBandarupalli <mb2279@njit.edu>"]
 readme = "README.md"
 packages = [{ include = "ntg", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.0"
+pytest-cov = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
