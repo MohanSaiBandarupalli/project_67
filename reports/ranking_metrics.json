@@ -1,0 +1,45 @@
+{
+  "split": "val",
+  "k": 50,
+  "candidates_per_user": 300,
+  "min_rating": 4.0,
+  "max_hist_items_per_user": 200,
+  "min_user_hist": 5,
+  "weights": {
+    "w_graph": 1.0,
+    "w_pop": 0.15
+  },
+  "duckdb": {
+    "threads": 4,
+    "memory_limit": "6GB",
+    "tmp_dir": "data/interim/duckdb_tmp"
+  },
+  "metrics": {
+    "n_users": 200451.0,
+    "precision@5": 0.06985747140198852,
+    "recall@5": 0.03246249145315948,
+    "ndcg@5": 0.0736416670855844,
+    "map@5": 0.042620988282534,
+    "hitrate@5": 0.24879895834892318,
+    "precision@10": 0.06547086320347617,
+    "recall@10": 0.06002077745886577,
+    "ndcg@10": 0.07916955338486989,
+    "map@10": 0.03637551414059406,
+    "hitrate@10": 0.38008291303111486,
+    "precision@20": 0.060591117031094884,
+    "recall@20": 0.10921760179291373,
+    "ndcg@20": 0.09478994405938065,
+    "map@20": 0.036785705035608886,
+    "hitrate@20": 0.5353926894852109,
+    "precision@50": 0.05155993235254502,
+    "recall@50": 0.21785358538280483,
+    "ndcg@50": 0.1331475721856085,
+    "map@50": 0.043608096758713986,
+    "hitrate@50": 0.7338102578685065,
+    "unique_items_recommended": 2050.0,
+    "total_recommendations": 10009779.0,
+    "item_coverage_ratio": 0.00020479972634760468
+  },
+  "timestamp": "2026-01-21T13:13:20",
+  "notes": "Leakage-safe: TRAIN-only positive history; graph candidates; popularity fallback for low-history users. Guardrails prevent candidate blow-ups."
+}
