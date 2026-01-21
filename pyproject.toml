@@ -17,13 +17,9 @@ dependencies = [
 
 # --- Poetry config (needed for src-layout packaging) ---
 [tool.poetry]
+name = "project-67"
+version = "0.1.0"
+description = "Netflix Neural Taste Graph (NTG) prototype: offline recommender + risk radar."
+authors = ["MohanSaiBandarupalli <mb2279@njit.edu>"]
+readme = "README.md"
 packages = [{ include = "ntg", from = "src" }]
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[dependency-groups]
-dev = [
-    "pytest (>=9.0.2,<10.0.0)"
-]
