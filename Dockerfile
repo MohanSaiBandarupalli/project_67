@@ -11,22 +11,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Pin Poetry (MUST match lockfile major version)
+# Pin Poetry (reproducible)
 RUN pip install --no-cache-dir "poetry==2.0.0"
 
-# Copy dependency files first for cache efficiency
+# Copy dependency manifests first (cache-friendly)
 COPY pyproject.toml poetry.lock /app/
 
-# Install dependencies
-RUN poetry install --no-interaction --no-ansi
+# Install dependencies ONLY (do not install the project yet)
+RUN poetry install --no-interaction --no-ansi --no-root
 
-# Copy only what you need (keeps image small + clean)
-COPY src/ /app/src/
+# Now copy the project files (including README)
+COPY README.md LICENSE Makefile pytest.ini /app/
 COPY configs/ /app/configs/
 COPY scripts/ /app/scripts/
-COPY README.md LICENSE Makefile pytest.ini /app/
+COPY src/ /app/src/
 
-# Ensure package is importable
+# Install the project package (editable is fine)
 RUN pip install --no-cache-dir -e .
 
 CMD ["python", "-m", "ntg.pipelines.build_dataset_duckdb"]
