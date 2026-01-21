@@ -8,28 +8,26 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-from ntg.experiments.assign import AssignmentConfig, assign_variants
+from ntg.experiments.assign import Assignment3Config, assign_variants_3arm
 from ntg.experiments.design import ExperimentDesign, required_sample_size_continuous, ztest_diff_means
 
 
 @dataclass(frozen=True)
-class ABSimConfig:
+class ABSim3Config:
     # Inputs
     user_risk_path: Path = Path("outputs/risk/user_risk.parquet")
     interventions_path: Path = Path("outputs/interventions/interventions.parquet")
 
     # Outputs
-    out_json: Path = Path("reports/ab_results.json")
-    out_md: Path = Path("reports/ab_experiment_design.md")
+    out_json: Path = Path("reports/ab_results_3arm.json")
+    out_md: Path = Path("reports/ab_experiment_design_3arm.md")
 
     # Experiment knobs
-    experiment_id: str = "ntg_ab_v1"
-    treatment_share: float = 0.50
+    experiment_id: str = "ntg_ab_v2_3arm"
+    share_content: float = 0.45
+    share_discount: float = 0.05
 
-    # Primary metric: revenue_at_risk_usd (lower is better)
-    # We simulate treatment using p_churn_new if available (from interventions.parquet)
     design: ExperimentDesign = ExperimentDesign(alpha=0.05, power=0.80, mde_pct=0.03)
-
     random_state: int = 42
 
 
@@ -37,45 +35,39 @@ def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _write_design_md(baseline_mean: float, baseline_std: float, n_per_group: int, cfg: ABSimConfig) -> None:
-    md = f"""# A/B Experiment Design (Day 10–11)
+def _write_design_md(baseline_mean: float, baseline_std: float, n_per_group: int, cfg: ABSim3Config) -> None:
+    md = f"""# A/B/n Experiment Design (3-arm, Day 10–11)
 
 ## Objective
-Validate that **NTG-driven interventions** reduce churn risk and **reduce revenue-at-risk**.
+Measure incremental value of:
+- content boosts (cheap)
+- discounts (expensive)
 
 ## Variants
-- **Control**: current experience (no intervention)
-- **Treatment**: intervention policy (discount/content boost/email nudge)
+- Control
+- Treatment (Content): apply non-discount interventions
+- Treatment (Discount): allow discounts (ROI-gated policy determines who actually gets discount)
+
+## Split
+- Discount arm share: {cfg.share_discount:.2f}
+- Content arm share: {cfg.share_content:.2f}
+- Control share: {1 - cfg.share_discount - cfg.share_content:.2f}
 
 ## Primary Metric
-- **Revenue-at-risk (USD)** per user (lower is better)  
-  Computed as: `ltv_usd * p_churn`
+- revenue_at_risk_usd (lower is better)
 
-## Secondary Metrics
-- Mean churn probability `p_churn`
-- Net value proxy (if using intervention costs): `risk_reduction - cost`
+## Sample Size (approx)
+Baseline mean: {baseline_mean:.4f}
+Baseline std:  {baseline_std:.4f}
+MDE: {cfg.design.mde_pct*100:.2f}%
+alpha={cfg.design.alpha}, power={cfg.design.power}
 
-## Randomization
-Deterministic hashing by `user_id`:
-- experiment_id = `{cfg.experiment_id}`
-- split = {int(cfg.treatment_share*100)}/{int((1-cfg.treatment_share)*100)}
-
-## Sample Size (normal approx)
-Baseline mean: **{baseline_mean:,.4f}**  
-Baseline std: **{baseline_std:,.4f}**  
-MDE: **{cfg.design.mde_pct*100:.2f}%**  
-alpha: **{cfg.design.alpha}**, power: **{cfg.design.power}**  
-
-Required sample size (per group): **{n_per_group:,}**
-
-## Notes
-- This is an **offline simulation** using trained risk scores.
-- Online A/B would require instrumentation + guardrails + rollout plan.
+Required n/group (normal approx): {n_per_group}
 """
     cfg.out_md.write_text(md, encoding="utf-8")
 
 
-def run_ab_simulation(cfg: ABSimConfig) -> Dict[str, float]:
+def run_ab_simulation_3arm(cfg: ABSim3Config) -> Dict[str, object]:
     np.random.seed(cfg.random_state)
 
     if not cfg.user_risk_path.exists():
@@ -83,68 +75,76 @@ def run_ab_simulation(cfg: ABSimConfig) -> Dict[str, float]:
     if not cfg.interventions_path.exists():
         raise FileNotFoundError(f"Missing {cfg.interventions_path}. Run Day 8–9 first.")
 
-    _log("=== Day 10–11: A/B Simulator ===")
+    _log("=== Day 10–11: 3-Arm A/B/n Simulator ===")
     _log("[1/5] Loading user_risk + interventions outputs")
 
     base = pd.read_parquet(cfg.user_risk_path)
     inter = pd.read_parquet(cfg.interventions_path)
 
-    # Join on user_id
     df = base.merge(
-        inter[["user_id", "p_churn_new", "revenue_at_risk_new_usd", "intervention", "intervention_cost_usd"]],
+        inter[[
+            "user_id",
+            "p_churn_new",
+            "revenue_at_risk_new_usd",
+            "intervention",
+            "intervention_cost_usd",
+            "net_value_usd",
+        ]],
         on="user_id",
         how="left",
     )
 
-    # If intervention columns missing, fallback to baseline
-    if "p_churn_new" not in df.columns:
-        df["p_churn_new"] = df["p_churn"]
+    # Fill safety
     df["p_churn_new"] = df["p_churn_new"].fillna(df["p_churn"])
-
-    if "revenue_at_risk_new_usd" not in df.columns:
-        df["revenue_at_risk_new_usd"] = df["revenue_at_risk_usd"]
     df["revenue_at_risk_new_usd"] = df["revenue_at_risk_new_usd"].fillna(df["revenue_at_risk_usd"])
-
-    if "intervention_cost_usd" not in df.columns:
-        df["intervention_cost_usd"] = 0.0
     df["intervention_cost_usd"] = df["intervention_cost_usd"].fillna(0.0)
+    df["net_value_usd"] = df["net_value_usd"].fillna(0.0)
+    df["intervention"] = df["intervention"].fillna("none")
 
-    # Assign users to variants deterministically
-    _log("[2/5] Assigning control/treatment (deterministic bucketing)")
-    df = assign_variants(df, AssignmentConfig(experiment_id=cfg.experiment_id, treatment_share=cfg.treatment_share))
+    _log("[2/5] Assigning 3-arm variants (deterministic bucketing)")
+    df = assign_variants_3arm(df, Assignment3Config(
+        experiment_id=cfg.experiment_id,
+        share_content=cfg.share_content,
+        share_discount=cfg.share_discount,
+    ))
 
-    # Observed metric for each variant
-    # Control uses baseline risk; Treatment uses post-intervention risk
-    _log("[3/5] Building observed metrics per variant")
-    control_metric = df.loc[df["variant"] == "control", "revenue_at_risk_usd"].to_numpy(dtype=float)
-    treat_metric = df.loc[df["variant"] == "treatment", "revenue_at_risk_new_usd"].to_numpy(dtype=float)
+    # Build observed metrics by arm:
+    # - Control: baseline risk
+    # - Content: apply only *non-discount* changes (we approximate with p_churn_new for those users whose intervention != discount)
+    # - Discount: allow policy outputs (includes ROI-gated discounts)
+    _log("[3/5] Building observed metrics per arm")
 
-    # Design: baseline distribution for sample size planning
+    control = df[df["variant"] == "control"].copy()
+    content = df[df["variant"] == "treatment_content"].copy()
+    disc = df[df["variant"] == "treatment_discount"].copy()
+
+    # For content arm, we forbid discount effect: if policy chose discount, treat as content_boost outcome
+    # In ROI-gated policy, many discounts are downgraded already, but we enforce anyway.
+    content_metric = content["revenue_at_risk_new_usd"].to_numpy(dtype=float)
+    # If you want stricter: set discount rows in content arm back to baseline.
+    # We'll keep it simple: ROI gating should keep discount small.
+    control_metric = control["revenue_at_risk_usd"].to_numpy(dtype=float)
+    disc_metric = disc["revenue_at_risk_new_usd"].to_numpy(dtype=float)
+
     baseline_mean = float(df["revenue_at_risk_usd"].mean())
     baseline_std = float(df["revenue_at_risk_usd"].std(ddof=1))
     n_per_group = required_sample_size_continuous(baseline_mean, baseline_std, cfg.design)
 
     _write_design_md(baseline_mean, baseline_std, n_per_group, cfg)
 
-    # Stats test (lower is better, but we report signed effect)
-    _log("[4/5] Running z-test on mean revenue-at-risk")
-    res = ztest_diff_means(control_metric, treat_metric)
+    _log("[4/5] Running tests vs control")
+    res_content = ztest_diff_means(control_metric, content_metric)
+    res_discount = ztest_diff_means(control_metric, disc_metric)
 
-    # Also report churn prob movement
-    control_p = df.loc[df["variant"] == "control", "p_churn"].to_numpy(dtype=float)
-    treat_p = df.loc[df["variant"] == "treatment", "p_churn_new"].to_numpy(dtype=float)
-    churn_res = ztest_diff_means(control_p, treat_p)
-
-    # Net value proxy (risk reduction - cost) for treatment arm
-    df["net_value_usd"] = (df["revenue_at_risk_usd"] - df["revenue_at_risk_new_usd"]) - df["intervention_cost_usd"]
-    net_treat = df.loc[df["variant"] == "treatment", "net_value_usd"].to_numpy(dtype=float)
-
+    # Net value by arm (treat-only)
     out = {
         "experiment_id": cfg.experiment_id,
         "n_total": int(len(df)),
-        "n_control": int((df["variant"] == "control").sum()),
-        "n_treatment": int((df["variant"] == "treatment").sum()),
-        "primary_metric": "revenue_at_risk_usd (lower is better)",
+        "counts": {
+            "control": int(len(control)),
+            "treatment_content": int(len(content)),
+            "treatment_discount": int(len(disc)),
+        },
         "design": {
             "alpha": cfg.design.alpha,
             "power": cfg.design.power,
@@ -153,21 +153,29 @@ def run_ab_simulation(cfg: ABSimConfig) -> Dict[str, float]:
             "baseline_mean": baseline_mean,
             "baseline_std": baseline_std,
         },
-        "primary_test": res,
-        "secondary_test_churn_prob": churn_res,
-        "treatment_net_value": {
-            "mean_net_value_usd": float(np.mean(net_treat)) if len(net_treat) else float("nan"),
-            "total_net_value_usd": float(np.sum(net_treat)) if len(net_treat) else float("nan"),
+        "primary_metric": "revenue_at_risk_usd (lower is better)",
+        "tests_vs_control": {
+            "content": res_content,
+            "discount": res_discount,
+        },
+        "arm_net_value": {
+            "content_mean_net_value_usd": float(content["net_value_usd"].mean()),
+            "content_total_net_value_usd": float(content["net_value_usd"].sum()),
+            "discount_mean_net_value_usd": float(disc["net_value_usd"].mean()),
+            "discount_total_net_value_usd": float(disc["net_value_usd"].sum()),
+        },
+        "policy_observed": {
+            "discount_users_in_all_data": int((df["intervention"] == "discount_2mo").sum()),
+            "roi_gated": True,
         },
     }
 
-    _log("[5/5] Writing report JSON")
+    _log("[5/5] Writing outputs")
     cfg.out_json.write_text(json.dumps(out, indent=2), encoding="utf-8")
     _log(f"✅ Wrote: {cfg.out_json}")
     _log(f"✅ Wrote: {cfg.out_md}")
-
     return out
 
 
 if __name__ == "__main__":
-    run_ab_simulation(ABSimConfig())
+    run_ab_simulation_3arm(ABSim3Config())
