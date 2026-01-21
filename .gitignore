@@ -32,6 +32,7 @@ htmlcov/
 data/external/
 data/interim/
 data/processed/
+data/features/
 
 # ===============================
 # DuckDB / Temp / Cache
