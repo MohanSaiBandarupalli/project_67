@@ -115,82 +115,38 @@ flowchart TD
     Z --> M
 
 
+User-Item Logs
+   |
+   v
+Validation + Schema
+   |
+   v
+Leakage-Safe Time Split (Per-User Chronological)
+   |------------------|
+   |                  |
+  TRAIN            VAL/TEST
+   |                  |
+   v                  v
+Feature Engineering    Offline Eval
+   |
+   v
+Neural Taste Graph (Item-Item: cooc + cosine + topK)
+   |
+   v
+Candidate Gen + Ranker  --->  Top-K Recs (topk.parquet)
+   |
+   v
+Churn Model + LTV Proxy
+   |
+   v
+Revenue Risk Radar (churn × LTV)
+   |
+   v
+A/B & A/B/n Simulator (ROI gating)
+   |
+   v
+Rollout / Rollback / Iterate
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         User–Item Interaction Logs                            │
-│                      (views, ratings, events, clicks)                         │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                   Data Validation & Schema Enforcement                         │
-│            (type checks, null handling, consistency guarantees)                │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                    Leakage-Safe Time Splitting                                 │
-│                      (Per-User Chronological)                                  │
-└───────────────┬───────────────────────────────┬──────────────────────────────┘
-                │                               │
-                ▼                               ▼
-┌──────────────────────────────┐     ┌─────────────────────────────────────────┐
-│          TRAIN Split          │     │            VAL / TEST Split              │
-│        (Model Inputs)         │     │         (Offline Evaluation)              │
-└──────────────┬───────────────┘     └─────────────────────────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         Feature Engineering System                              │
-│  • User behavioral features (recency, frequency, diversity)                     │
-│  • Item popularity & stability metrics                                           │
-│  • Interaction affinity & strength                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                  Neural Taste Graph (Item–Item Graph)                           │
-│  • User co-occurrence aggregation                                                │
-│  • Cosine similarity computation                                                 │
-│  • Top-K pruning with power-user guardrails                                      │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                 Candidate Generation & Ranking Engine                           │
-│   (graph neighbors × popularity × learned weights)                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                    Top-K Personalized Recommendations                           │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                   Churn Probability Model + LTV Estimation                      │
-│            (leakage-safe, TRAIN-only behavioral signals)                         │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        Revenue Risk Radar                                       │
-│                 (Churn Probability × Estimated LTV)                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                   A/B & A/B/n Experimentation Platform                          │
-│  • Statistical significance testing                                              │
-│  • Effect size & lift measurement                                                │
-│  • ROI gating & policy constraints                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                      Deployment Decision Layer                                  │
-│                (Rollout / Rollback / Iterate)                                    │
-└──────────────────────────────────────────────────────────────────────────────┘
 
 
 ---
