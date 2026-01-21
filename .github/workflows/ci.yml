@@ -23,10 +23,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install "poetry==2.0.0"
 
-      - name: Configure Poetry
+      - name: Configure Poetry (project venv)
         run: |
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
+
+      # Cache Poetry downloads + wheels
+      - name: Cache Poetry cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: ${{ runner.os }}-poetry-cache-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-cache-
+
+      # Cache the actual virtualenv (.venv) created in the repo
+      - name: Cache .venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-venv-
 
       - name: Install dependencies
         run: |
