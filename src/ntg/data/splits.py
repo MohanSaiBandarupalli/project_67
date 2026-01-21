@@ -9,9 +9,9 @@ import pandas as pd
 from ntg.data.schemas import SCHEMA
 
 
-# -------------------------
-# Per-user chronological split
-# -------------------------
+# =========================================================
+# Per-user chronological split (leakage-safe)
+# =========================================================
 
 @dataclass(frozen=True)
 class PerUserTimeSplitConfig:
@@ -23,7 +23,7 @@ class PerUserTimeSplitConfig:
 
     min_interactions:
       - if a user has fewer than this, keep all rows in train
-        to avoid pathological tiny val/test for that user.
+        to avoid pathological tiny val/test splits.
     """
     train_frac: float = 0.70
     val_frac: float = 0.15
@@ -40,9 +40,22 @@ class PerUserTimeSplitConfig:
             raise ValueError("min_interactions must be >= 1")
 
 
-def _split_one_user(g: pd.DataFrame, cfg: PerUserTimeSplitConfig) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    # g is already sorted by timestamp
+# ---------------------------------------------------------
+# Backward-compatible alias (DO NOT REMOVE)
+# ---------------------------------------------------------
+# Tests and older modules expect this exact name
+TimeSplitConfig = PerUserTimeSplitConfig
+
+
+def _split_one_user(
+    g: pd.DataFrame,
+    cfg: PerUserTimeSplitConfig,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Split a single user's interactions (already time-sorted).
+    """
     n = len(g)
+
     if n < cfg.min_interactions:
         return g, g.iloc[0:0], g.iloc[0:0]
 
@@ -52,6 +65,7 @@ def _split_one_user(g: pd.DataFrame, cfg: PerUserTimeSplitConfig) -> Tuple[pd.Da
     train = g.iloc[:train_end]
     val = g.iloc[train_end:val_end]
     test = g.iloc[val_end:]
+
     return train, val, test
 
 
@@ -63,21 +77,27 @@ def time_split_per_user(
     Returns (train, val, test, metadata)
 
     Guarantees:
-      - within each user, train rows are earlier than val, earlier than test
-      - deterministic (no randomization)
+      - chronological ordering within each user
+      - deterministic (no randomness)
+      - leakage-safe
     """
     cfg.validate()
 
-    df = df.sort_values([SCHEMA.USER_ID, SCHEMA.TIMESTAMP, SCHEMA.ITEM_ID]).reset_index(drop=True)
+    df = (
+        df.sort_values(
+            [SCHEMA.USER_ID, SCHEMA.TIMESTAMP, SCHEMA.ITEM_ID]
+        )
+        .reset_index(drop=True)
+    )
 
     train_parts, val_parts, test_parts = [], [], []
 
     for _, g in df.groupby(SCHEMA.USER_ID, sort=False):
         tr, va, te = _split_one_user(g, cfg)
         train_parts.append(tr)
-        if len(va) > 0:
+        if not va.empty:
             val_parts.append(va)
-        if len(te) > 0:
+        if not te.empty:
             test_parts.append(te)
 
     train = pd.concat(train_parts, ignore_index=True) if train_parts else df.iloc[0:0]
@@ -92,17 +112,18 @@ def time_split_per_user(
         "frac_train": float(len(train) / max(len(df), 1)),
         "frac_val": float(len(val) / max(len(df), 1)),
         "frac_test": float(len(test) / max(len(df), 1)),
-        "min_interactions": float(cfg.min_interactions),
         "train_frac": float(cfg.train_frac),
         "val_frac": float(cfg.val_frac),
+        "min_interactions": float(cfg.min_interactions),
         "strategy": "per_user_time",
     }
+
     return train, val, test, meta
 
 
-# -------------------------
-# Global time split (scales better)
-# -------------------------
+# =========================================================
+# Global time split (scales better, simpler)
+# =========================================================
 
 @dataclass(frozen=True)
 class GlobalTimeSplitConfig:
@@ -123,17 +144,23 @@ def time_split_global(
     cfg: GlobalTimeSplitConfig,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, float]]:
     """
-    Split by global timestamp order.
+    Global chronological split.
 
     Pros:
       - simpler
-      - strong global leakage protection
+      - strong leakage protection
 
     Cons:
       - not per-user aligned
     """
     cfg.validate()
-    df = df.sort_values([SCHEMA.TIMESTAMP, SCHEMA.USER_ID, SCHEMA.ITEM_ID]).reset_index(drop=True)
+
+    df = (
+        df.sort_values(
+            [SCHEMA.TIMESTAMP, SCHEMA.USER_ID, SCHEMA.ITEM_ID]
+        )
+        .reset_index(drop=True)
+    )
 
     n = len(df)
     t_end = int(n * cfg.train_frac)
@@ -155,4 +182,5 @@ def time_split_global(
         "val_frac": float(cfg.val_frac),
         "strategy": "global_time",
     }
+
     return train, val, test, meta
