@@ -115,41 +115,6 @@ flowchart TD
     Z --> M
 
 
-User-Item Logs
-   |
-   v
-Validation + Schema
-   |
-   v
-Leakage-Safe Time Split (Per-User Chronological)
-   |------------------|
-   |                  |
-  TRAIN            VAL/TEST
-   |                  |
-   v                  v
-Feature Engineering    Offline Eval
-   |
-   v
-Neural Taste Graph (Item-Item: cooc + cosine + topK)
-   |
-   v
-Candidate Gen + Ranker  --->  Top-K Recs (topk.parquet)
-   |
-   v
-Churn Model + LTV Proxy
-   |
-   v
-Revenue Risk Radar (churn × LTV)
-   |
-   v
-A/B & A/B/n Simulator (ROI gating)
-   |
-   v
-Rollout / Rollback / Iterate
-
-
-
----
 
 ## Data Handling & Leakage Prevention
 
