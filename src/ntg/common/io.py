@@ -10,7 +10,7 @@ def read_json(path: str | Path) -> Dict[str, Any]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def write_json(path: str | Path, obj: Any, *, indent: int = 2) -> None:
+def write_json(path: str | Path, obj: Dict[str, Any], *, indent: int = 2) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(obj, indent=indent), encoding="utf-8")
+    p.write_text(json.dumps(obj, indent=indent, sort_keys=True), encoding="utf-8")
