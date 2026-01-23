@@ -51,13 +51,14 @@ jobs:
         run: |
           poetry install --no-interaction --no-ansi
 
-      # IMPORTANT:
-      # Do NOT create data/features or outputs/* directories in CI.
-      # If those folders exist, contract tests will assert parquet outputs exist.
-      - name: Run unit tests (no integration, no local-artifact contracts)
+      - name: Run CI-safe unit tests (no dataset required)
         run: |
           poetry run pytest -q -m "not integration" \
-            --ignore=tests/unit/pipelines
+            --ignore=tests/unit/pipelines \
+            --ignore=tests/unit/features \
+            --ignore=tests/unit/graph \
+            --ignore=tests/unit/churn \
+            --ignore=tests/unit/data
 
       - name: Build Docker image
         run: |
