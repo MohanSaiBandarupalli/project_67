@@ -15,7 +15,7 @@ def set_seed(seed: int, *, deterministic: bool = True) -> None:
         pass
 
     try:
-        import torch
+        import torch  # type: ignore[import-not-found]
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         if deterministic:
