@@ -51,25 +51,29 @@ jobs:
         run: |
           poetry install --no-interaction --no-ansi
 
-      # Optional: sanity on repo structure
       - name: Show environment info
         run: |
           poetry --version
           poetry run python -V
           poetry run python -c "import sys; print(sys.executable)"
 
-      # Build minimal artifacts if pipeline entrypoints exist.
-      # These are "best effort": they won't fail CI if a module isn't present yet.
-      - name: Build artifacts (splits/features/graph/ranker) - best effort
+      - name: Build artifacts (splits/features/graph/ranker)
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p data/processed/splits data/features outputs/graph outputs/recommendations reports data/interim/duckdb_tmp
+          mkdir -p data/processed/splits data/features outputs/graph outputs/recommendations outputs/risk reports data/interim/duckdb_tmp
 
-          run_if_module() {
+          require_module() {
             local mod="$1"
-            echo ">>> Trying: python -m ${mod}"
+            echo ">>> REQUIRE: python -m ${mod}"
+            poetry run python -c "import importlib; importlib.import_module('${mod}')"
+            poetry run python -m "${mod}"
+          }
+
+          best_effort_module() {
+            local mod="$1"
+            echo ">>> BEST-EFFORT: python -m ${mod}"
             if poetry run python -c "import importlib; importlib.import_module('${mod}')" >/dev/null 2>&1; then
               poetry run python -m "${mod}" || true
             else
@@ -77,24 +81,29 @@ jobs:
             fi
           }
 
-          # Day-1 split builder (example)
-          run_if_module "ntg.pipelines.build_dataset_duckdb"
+          # Day-1 MUST succeed
+          require_module "ntg.pipelines.build_dataset_duckdb"
 
-          # Day-2 feature builders (example)
-          run_if_module "ntg.pipelines.build_features"
+          # Optional stages
+          best_effort_module "ntg.pipelines.build_features"
+          best_effort_module "ntg.graph.build_graph"
+          best_effort_module "ntg.models.ranker"
+          best_effort_module "ntg.churn.evaluate"
 
-          # Day-3 graph builder
-          run_if_module "ntg.graph.build_graph"
+      - name: Sanity check required artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f data/processed/splits/train.parquet
+          test -f data/processed/splits/val.parquet
+          test -f data/processed/splits/test.parquet
+          echo "✅ Splits exist"
+          ls -lh data/processed/splits
 
-          # Day-4 ranker
-          run_if_module "ntg.models.ranker"
-
-      # Run tests (unit only) so CI isn't blocked by long/heavy jobs.
       - name: Run tests (unit only)
         run: |
           poetry run pytest -q -m "not integration"
 
-      # Upload artifacts for debugging (graphs/reports/features)
       - name: Upload artifacts (outputs/reports/features)
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,6 +116,14 @@ jobs:
             data/processed/splits/**
           if-no-files-found: warn
 
-      - name: Build Docker image
-        run: |
-          docker build -t ntg:ci .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ntg:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
