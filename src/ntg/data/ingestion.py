@@ -140,3 +140,28 @@ def build_interactions_dataset(
 
     print(f"[ingestion] compacted interactions saved.", flush=True)
     return cfg.output_interactions_path
+
+
+# =============================================================================
+# Split exports (required by tests via ntg.data.ingestion._import_splits())
+# Single source of truth: ntg.data.splits
+# =============================================================================
+from ntg.data.splits import (  # noqa: E402
+    GlobalTimeSplitConfig,
+    PerUserTimeSplitConfig,
+    TimeSplitConfig,
+    time_split_global,
+    time_split_per_user,
+)
+
+__all__ = [
+    "MovieLensConfig",
+    "MovieLensIngestionError",
+    "build_interactions_dataset",
+    # split API
+    "TimeSplitConfig",
+    "PerUserTimeSplitConfig",
+    "GlobalTimeSplitConfig",
+    "time_split_global",
+    "time_split_per_user",
+]

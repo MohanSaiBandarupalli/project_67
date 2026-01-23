@@ -1,186 +1,217 @@
 # src/ntg/data/splits.py
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from pathlib import Path
+from typing import Any, Dict, Tuple
 
 import pandas as pd
 
-from ntg.data.schemas import SCHEMA
 
-
-# =========================================================
-# Per-user chronological split (leakage-safe)
-# =========================================================
-
+# -------------------------------
+# Configs (backward compatible)
+# -------------------------------
 @dataclass(frozen=True)
-class PerUserTimeSplitConfig:
-    """
-    Per-user chronological split config.
-
-    train_frac + val_frac must be < 1.0.
-    test_frac is implied.
-
-    min_interactions:
-      - if a user has fewer than this, keep all rows in train
-        to avoid pathological tiny val/test splits.
-    """
+class TimeSplitConfig:
     train_frac: float = 0.70
     val_frac: float = 0.15
     min_interactions: int = 5
 
-    def validate(self) -> None:
-        if not (0.0 < self.train_frac < 1.0):
-            raise ValueError("train_frac must be in (0, 1)")
-        if not (0.0 <= self.val_frac < 1.0):
-            raise ValueError("val_frac must be in [0, 1)")
-        if self.train_frac + self.val_frac >= 1.0:
-            raise ValueError("train_frac + val_frac must be < 1.0")
-        if self.min_interactions < 1:
-            raise ValueError("min_interactions must be >= 1")
+
+# Older names some tests/code may look for
+PerUserTimeSplitConfig = TimeSplitConfig
+GlobalTimeSplitConfig = TimeSplitConfig
 
 
-# ---------------------------------------------------------
-# Backward-compatible alias (DO NOT REMOVE)
-# ---------------------------------------------------------
-# Tests and older modules expect this exact name
-TimeSplitConfig = PerUserTimeSplitConfig
+def _validate_cfg(cfg: TimeSplitConfig) -> None:
+    if cfg.train_frac <= 0 or cfg.train_frac >= 1:
+        raise ValueError("train_frac must be in (0, 1)")
+    if cfg.val_frac < 0 or cfg.val_frac >= 1:
+        raise ValueError("val_frac must be in [0, 1)")
+    if cfg.train_frac + cfg.val_frac >= 1:
+        raise ValueError("train_frac + val_frac must be < 1")
+    if cfg.min_interactions < 1:
+        raise ValueError("min_interactions must be >= 1")
 
 
-def _split_one_user(
-    g: pd.DataFrame,
-    cfg: PerUserTimeSplitConfig,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _require_columns(df: pd.DataFrame) -> None:
+    required = {"user_id", "item_id", "timestamp", "rating"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+
+
+def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Split a single user's interactions (already time-sorted).
+    Normalize dtypes so tests behave deterministically and filters like df[df["user_id"]==2]
+    work as expected (no string/int mismatches).
     """
-    n = len(g)
+    out = df.copy()
 
-    if n < cfg.min_interactions:
-        return g, g.iloc[0:0], g.iloc[0:0]
+    # user_id / item_id must be numeric ints
+    out["user_id"] = pd.to_numeric(out["user_id"], errors="raise").astype("int64")
+    out["item_id"] = pd.to_numeric(out["item_id"], errors="raise").astype("int64")
 
-    train_end = max(int(n * cfg.train_frac), 1)
-    val_end = max(int(n * (cfg.train_frac + cfg.val_frac)), train_end)
+    # rating numeric float
+    out["rating"] = pd.to_numeric(out["rating"], errors="raise").astype("float64")
 
-    train = g.iloc[:train_end]
-    val = g.iloc[train_end:val_end]
-    test = g.iloc[val_end:]
+    # timestamp datetime
+    if not pd.api.types.is_datetime64_any_dtype(out["timestamp"]):
+        out["timestamp"] = pd.to_datetime(out["timestamp"], errors="coerce")
+    if out["timestamp"].isna().any():
+        raise ValueError("timestamp contains NaT after conversion")
 
-    return train, val, test
-
-
-def time_split_per_user(
-    df: pd.DataFrame,
-    cfg: PerUserTimeSplitConfig,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, float]]:
-    """
-    Returns (train, val, test, metadata)
-
-    Guarantees:
-      - chronological ordering within each user
-      - deterministic (no randomness)
-      - leakage-safe
-    """
-    cfg.validate()
-
-    df = (
-        df.sort_values(
-            [SCHEMA.USER_ID, SCHEMA.TIMESTAMP, SCHEMA.ITEM_ID]
-        )
-        .reset_index(drop=True)
-    )
-
-    train_parts, val_parts, test_parts = [], [], []
-
-    for _, g in df.groupby(SCHEMA.USER_ID, sort=False):
-        tr, va, te = _split_one_user(g, cfg)
-        train_parts.append(tr)
-        if not va.empty:
-            val_parts.append(va)
-        if not te.empty:
-            test_parts.append(te)
-
-    train = pd.concat(train_parts, ignore_index=True) if train_parts else df.iloc[0:0]
-    val = pd.concat(val_parts, ignore_index=True) if val_parts else df.iloc[0:0]
-    test = pd.concat(test_parts, ignore_index=True) if test_parts else df.iloc[0:0]
-
-    meta = {
-        "n_total": float(len(df)),
-        "n_train": float(len(train)),
-        "n_val": float(len(val)),
-        "n_test": float(len(test)),
-        "frac_train": float(len(train) / max(len(df), 1)),
-        "frac_val": float(len(val) / max(len(df), 1)),
-        "frac_test": float(len(test) / max(len(df), 1)),
-        "train_frac": float(cfg.train_frac),
-        "val_frac": float(cfg.val_frac),
-        "min_interactions": float(cfg.min_interactions),
-        "strategy": "per_user_time",
-    }
-
-    return train, val, test, meta
+    return out
 
 
-# =========================================================
-# Global time split (scales better, simpler)
-# =========================================================
-
-@dataclass(frozen=True)
-class GlobalTimeSplitConfig:
-    train_frac: float = 0.70
-    val_frac: float = 0.15
-
-    def validate(self) -> None:
-        if not (0.0 < self.train_frac < 1.0):
-            raise ValueError("train_frac must be in (0, 1)")
-        if not (0.0 <= self.val_frac < 1.0):
-            raise ValueError("val_frac must be in [0, 1)")
-        if self.train_frac + self.val_frac >= 1.0:
-            raise ValueError("train_frac + val_frac must be < 1.0")
-
-
+# ==========================================================
+# Global chronological split
+# ==========================================================
 def time_split_global(
-    df: pd.DataFrame,
-    cfg: GlobalTimeSplitConfig,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, float]]:
-    """
-    Global chronological split.
+    interactions: pd.DataFrame,
+    cfg: TimeSplitConfig,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    _validate_cfg(cfg)
+    _require_columns(interactions)
 
-    Pros:
-      - simpler
-      - strong leakage protection
+    if interactions.empty:
+        meta = {
+            "strategy": "global_time",
+            "n_total": 0,
+            "n_train": 0,
+            "n_val": 0,
+            "n_test": 0,
+            "train_frac": cfg.train_frac,
+            "val_frac": cfg.val_frac,
+        }
+        empty = interactions.copy()
+        return empty, empty, empty, meta
 
-    Cons:
-      - not per-user aligned
-    """
-    cfg.validate()
-
-    df = (
-        df.sort_values(
-            [SCHEMA.TIMESTAMP, SCHEMA.USER_ID, SCHEMA.ITEM_ID]
-        )
-        .reset_index(drop=True)
-    )
+    df = _coerce_types(interactions)
+    df = df.sort_values(["timestamp", "user_id", "item_id"], ascending=[True, True, True]).reset_index(drop=True)
 
     n = len(df)
-    t_end = int(n * cfg.train_frac)
-    v_end = int(n * (cfg.train_frac + cfg.val_frac))
+    train_end = int(n * float(cfg.train_frac))  # floor
+    val_end = int(n * float(cfg.train_frac + cfg.val_frac))  # floor
 
-    train = df.iloc[:t_end]
-    val = df.iloc[t_end:v_end]
-    test = df.iloc[v_end:]
+    train_end = max(1, train_end)
+    val_end = max(train_end, val_end)
+
+    train = df.iloc[:train_end].copy()
+    val = df.iloc[train_end:val_end].copy()
+    test = df.iloc[val_end:].copy()
+
+    if len(train) + len(val) + len(test) != n:
+        raise RuntimeError("Global split produced row loss/gain (train+val+test != total)")
 
     meta = {
-        "n_total": float(n),
-        "n_train": float(len(train)),
-        "n_val": float(len(val)),
-        "n_test": float(len(test)),
+        "strategy": "global_time",
+        "n_total": int(n),
+        "n_train": int(len(train)),
+        "n_val": int(len(val)),
+        "n_test": int(len(test)),
         "frac_train": float(len(train) / max(n, 1)),
         "frac_val": float(len(val) / max(n, 1)),
         "frac_test": float(len(test) / max(n, 1)),
         "train_frac": float(cfg.train_frac),
         "val_frac": float(cfg.val_frac),
-        "strategy": "global_time",
+    }
+    return train.reset_index(drop=True), val.reset_index(drop=True), test.reset_index(drop=True), meta
+
+
+# ==========================================================
+# Per-user chronological split
+# ==========================================================
+def time_split_per_user(
+    interactions: pd.DataFrame,
+    cfg: TimeSplitConfig,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    _validate_cfg(cfg)
+    _require_columns(interactions)
+
+    if interactions.empty:
+        meta = {
+            "strategy": "per_user_time",
+            "n_total": 0,
+            "n_train": 0,
+            "n_val": 0,
+            "n_test": 0,
+            "train_frac": cfg.train_frac,
+            "val_frac": cfg.val_frac,
+            "min_interactions": cfg.min_interactions,
+        }
+        empty = interactions.copy()
+        return empty, empty, empty, meta
+
+    df = _coerce_types(interactions)
+
+    df = df.sort_values(["user_id", "timestamp", "item_id"], ascending=[True, True, True]).reset_index(drop=True)
+
+    df["_cnt"] = df.groupby("user_id")["user_id"].transform("size").astype("int64")
+    df["_rn"] = (df.groupby("user_id").cumcount() + 1).astype("int64")
+
+    train_end = (df["_cnt"] * float(cfg.train_frac)).apply(lambda x: int(x)).clip(lower=1).astype("int64")
+    val_end = (df["_cnt"] * float(cfg.train_frac + cfg.val_frac)).apply(lambda x: int(x)).astype("int64")
+    val_end = pd.concat([train_end, val_end], axis=1).max(axis=1).astype("int64")
+
+    df["_train_end"] = train_end
+    df["_val_end"] = val_end
+
+    # Assign split (min_interactions override)
+    def _assign_split(row) -> str:
+        if int(row["_cnt"]) < int(cfg.min_interactions):
+            return "train"
+        if int(row["_rn"]) <= int(row["_train_end"]):
+            return "train"
+        if int(row["_rn"]) <= int(row["_val_end"]):
+            return "val"
+        return "test"
+
+    df["split"] = df.apply(_assign_split, axis=1)
+
+    train = df[df["split"] == "train"].drop(columns=["_cnt", "_rn", "_train_end", "_val_end", "split"])
+    val = df[df["split"] == "val"].drop(columns=["_cnt", "_rn", "_train_end", "_val_end", "split"])
+    test = df[df["split"] == "test"].drop(columns=["_cnt", "_rn", "_train_end", "_val_end", "split"])
+
+    n_total = len(df)
+    if len(train) + len(val) + len(test) != n_total:
+        raise RuntimeError("Per-user split produced row loss/gain (train+val+test != total)")
+
+    meta = {
+        "strategy": "per_user_time",
+        "n_total": int(n_total),
+        "n_train": int(len(train)),
+        "n_val": int(len(val)),
+        "n_test": int(len(test)),
+        "frac_train": float(len(train) / max(n_total, 1)),
+        "frac_val": float(len(val) / max(n_total, 1)),
+        "frac_test": float(len(test) / max(n_total, 1)),
+        "train_frac": float(cfg.train_frac),
+        "val_frac": float(cfg.val_frac),
+        "min_interactions": int(cfg.min_interactions),
     }
 
-    return train, val, test, meta
+    return train.reset_index(drop=True), val.reset_index(drop=True), test.reset_index(drop=True), meta
+
+
+# Backward-compat alias some code may use
+time_split_config_per_user = time_split_per_user
+
+
+def write_splits(
+    train: pd.DataFrame,
+    val: pd.DataFrame,
+    test: pd.DataFrame,
+    out_dir: Path,
+    metadata: Dict[str, Any] | None = None,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    train.to_parquet(out_dir / "train.parquet", index=False)
+    val.to_parquet(out_dir / "val.parquet", index=False)
+    test.to_parquet(out_dir / "test.parquet", index=False)
+    if metadata is not None:
+        (out_dir / "metadata.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )

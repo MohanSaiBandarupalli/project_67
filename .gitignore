@@ -77,4 +77,4 @@ tmp/
 .cache/
 
 # Keep small JSON reports tracked (optional)
-!reports/*.json
+!reports/*.json*.pyc

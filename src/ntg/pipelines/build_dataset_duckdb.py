@@ -233,5 +233,15 @@ def run(cfg: DuckDBBuildDatasetConfig) -> None:
         print(f" - interactions: {cfg.interactions_path}", flush=True)
 
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """
+    Integration-test and CLI entrypoint.
+
+    Tests expect: `ntg.pipelines.build_dataset_duckdb.main`.
+    """
     run(DuckDBBuildDatasetConfig())
+
+
+if __name__ == "__main__":
+    main()

@@ -80,7 +80,7 @@ def _build_labels_inactivity_duckdb(cfg: ChurnModelConfig) -> pd.DataFrame:
         """
     )
 
-    # Normalize timestamp → epoch seconds (DOUBLE) – STRICT typing
+    # Normalize timestamp → epoch seconds (DOUBLE)
     con.execute(
         """
         CREATE OR REPLACE VIEW tr AS
@@ -264,14 +264,17 @@ def train_and_score(cfg: ChurnModelConfig) -> None:
 
     _log("[4/4] Scoring users")
     p = model.predict_proba(X)[:, 1]
+
+    # ✅ tests expect churn_prob (not p_churn)
     out = pd.DataFrame(
-        {"user_id": df["user_id"].astype("int64"), "p_churn": p.astype("float32")}
+        {
+            "user_id": df["user_id"].astype("int64"),
+            "churn_prob": pd.Series(p, dtype="float64").clip(0.0, 1.0).astype("float32"),
+        }
     )
     out.to_parquet(cfg.out_scores_path, index=False)
 
-    cfg.out_model_report_path.write_text(
-        json.dumps(report, indent=2), encoding="utf-8"
-    )
+    cfg.out_model_report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     _log(f"✅ Wrote: {cfg.out_scores_path}")
     _log(f"✅ Report: {cfg.out_model_report_path}")

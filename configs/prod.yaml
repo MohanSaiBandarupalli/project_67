@@ -1,0 +1,10 @@
+cat > configs/prod.yaml << 'YAML'
+# Production overrides (example)
+duckdb:
+  threads: 8
+  memory_limit: "32GB"
+
+graph:
+  topk_per_item: 200
+  min_item_support: 500
+YAML

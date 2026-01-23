@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from ntg.experiments.simulate_ab import ABSimConfig, run_ab_simulation
+from ntg.experiments.simulate_ab import ABSim3Config, run_ab_simulation_3arm
 
 
 def main() -> None:
-    run_ab_simulation(ABSimConfig())
-    print("✅ Day 10–11 complete (A/B simulator + experiment design).", flush=True)
+    run_ab_simulation_3arm(ABSim3Config())
 
 
 if __name__ == "__main__":

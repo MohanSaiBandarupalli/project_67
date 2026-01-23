@@ -12,6 +12,7 @@ from ntg.experiments.assign import Assignment3Config, assign_variants_3arm
 from ntg.experiments.design import ExperimentDesign, required_sample_size_continuous, ztest_diff_means
 
 
+
 @dataclass(frozen=True)
 class ABSim3Config:
     # Inputs

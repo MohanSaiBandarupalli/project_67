@@ -1,0 +1,34 @@
+cat > configs/base.yaml << 'YAML'
+project:
+  name: "netflix-neural-taste-graph"
+  seed: 42
+
+paths:
+  data_external: "data/external"
+  data_processed: "data/processed"
+  interim_dir: "data/interim"
+  outputs_dir: "outputs"
+  reports_dir: "reports"
+
+dataset:
+  movielens_root: "data/external/movielens/ml-32m"
+  ratings_file: "ratings.csv"
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  min_interactions: 5
+
+graph:
+  min_item_support: 200
+  min_cooc: 20
+  topk_per_item: 100
+  min_cosine: 0.10
+  min_items_per_user: 2
+  max_items_per_user: 300
+
+duckdb:
+  threads: 4
+  memory_limit: "8GB"
+  temp_dir: "data/interim/duckdb_tmp"
+YAML

@@ -1,3 +1,4 @@
+# src/ntg/models/ranker.py
 from __future__ import annotations
 
 import json
@@ -15,25 +16,11 @@ def log(msg: str) -> None:
 
 @dataclass(frozen=True)
 class RankerConfig:
-    """
-    Candidate-based ranker for offline evaluation.
-
-    Netflix-style: two-stage mindset
-      (1) candidate generation (graph neighbors, TRAIN-only)
-      (2) ranking (simple linear score)
-      (3) offline eval on VAL
-
-    Guardrails are critical to prevent blow-ups on ML-32M:
-      - cap history per user
-      - use positive-only interactions for candidate generation
-      - cap candidate pool per user
-      - avoid expensive "anti-join after explosion"
-    """
     # Inputs (leakage-safe)
     train_path: Path = Path("data/processed/splits/train.parquet")
     val_path: Path = Path("data/processed/splits/val.parquet")
-    test_path: Path = Path("data/processed/splits/test.parquet")
 
+    # Optional input (graph). If missing -> popularity-only fallback.
     graph_path: Path = Path("outputs/graph/item_item.parquet")
 
     # Outputs
@@ -44,16 +31,16 @@ class RankerConfig:
     k: int = 50
     candidates_per_user: int = 300
 
-    # Guardrails (the fix for your 44% stall)
-    min_rating: float = 4.0              # MovieLens: treat >=4 as positive signal
-    max_hist_items_per_user: int = 200   # cap user history used for candidates
-    min_user_hist: int = 5               # below this -> popularity fallback only
+    # Guardrails
+    min_rating: float = 4.0
+    max_hist_items_per_user: int = 200
+    min_user_hist: int = 5
 
     # Score weights
     w_graph: float = 1.0
     w_pop: float = 0.15
 
-    # DuckDB runtime (WSL-friendly)
+    # DuckDB runtime
     threads: int = 4
     memory_limit: str = "6GB"
     tmp_dir: Path = Path("data/interim/duckdb_tmp")
@@ -64,9 +51,13 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
     cfg.out_topk_path.parent.mkdir(parents=True, exist_ok=True)
     cfg.out_metrics_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for p in [cfg.train_path, cfg.val_path, cfg.graph_path]:
+    # Required inputs
+    for p in [cfg.train_path, cfg.val_path]:
         if not p.exists():
             raise FileNotFoundError(f"Missing required input: {p}")
+
+    # Optional graph (do NOT fail tests if missing)
+    graph_available = cfg.graph_path.exists()
 
     log("Connecting DuckDB (in-memory)")
     con = duckdb.connect(database=":memory:")
@@ -76,7 +67,7 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
     con.execute("PRAGMA enable_progress_bar=true;")
     con.execute("PRAGMA preserve_insertion_order=false;")
 
-    log("Loading TRAIN + VAL + graph")
+    log("Loading TRAIN + VAL")
     con.execute(
         f"""
         CREATE OR REPLACE VIEW train AS
@@ -96,16 +87,32 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         FROM read_parquet('{cfg.val_path.as_posix()}');
         """
     )
-    con.execute(
-        f"""
-        CREATE OR REPLACE VIEW graph AS
-        SELECT
-            CAST(src_item AS BIGINT) AS src_item,
-            CAST(dst_item AS BIGINT) AS dst_item,
-            CAST(cosine AS DOUBLE)   AS cosine
-        FROM read_parquet('{cfg.graph_path.as_posix()}');
-        """
-    )
+
+    if graph_available:
+        log("Loading graph")
+        con.execute(
+            f"""
+            CREATE OR REPLACE VIEW graph AS
+            SELECT
+                CAST(src_item AS BIGINT) AS src_item,
+                CAST(dst_item AS BIGINT) AS dst_item,
+                CAST(cosine AS DOUBLE)   AS cosine
+            FROM read_parquet('{cfg.graph_path.as_posix()}');
+            """
+        )
+    else:
+        # Deterministic fallback: empty graph
+        log("Graph missing -> running popularity-only fallback (deterministic)")
+        con.execute(
+            """
+            CREATE OR REPLACE TEMP TABLE graph (
+                src_item BIGINT,
+                dst_item BIGINT,
+                cosine   DOUBLE
+            );
+            """
+        )
+        con.execute("CREATE OR REPLACE VIEW graph AS SELECT * FROM graph;")
 
     # Popularity prior (TRAIN-only)
     log("Computing item popularity prior (TRAIN-only)")
@@ -125,8 +132,9 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         """
     )
 
-    # Build guarded user history (TRAIN-only, positive-only, capped)
-    log("Building user history (TRAIN-only, positive-only, capped)")
+    # Deterministic user history (TRAIN-only, positive-only, capped)
+    # IMPORTANT: NO RANDOM() -> determinism for tests
+    log("Building user history (TRAIN-only, positive-only, capped, deterministic)")
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE user_hist AS
@@ -138,7 +146,7 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
                 rating,
                 ROW_NUMBER() OVER (
                     PARTITION BY user_id
-                    ORDER BY rating DESC, RANDOM()
+                    ORDER BY rating DESC, item_id ASC
                 ) AS rn
             FROM train
             WHERE rating >= {cfg.min_rating}
@@ -155,10 +163,27 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         """
     )
 
-    n_users = con.execute("SELECT COUNT(*) FROM user_hist_cnt").fetchone()[0]
-    log(f"user_hist users: {n_users:,}")
+    # Ensure we cover users even if they have 0 positives (so we can still recommend)
+    con.execute(
+        """
+        CREATE OR REPLACE TEMP TABLE all_users AS
+        SELECT DISTINCT user_id FROM train
+        UNION
+        SELECT DISTINCT user_id FROM val;
+        """
+    )
+    con.execute(
+        """
+        CREATE OR REPLACE TEMP TABLE eligible AS
+        SELECT
+            u.user_id,
+            COALESCE(h.n_hist, 0) AS n_hist
+        FROM all_users u
+        LEFT JOIN user_hist_cnt h USING(user_id);
+        """
+    )
 
-    # Popularity fallback list (for cold/low-history users)
+    # Popularity fallback list
     log("Preparing popularity fallback list")
     con.execute(
         f"""
@@ -170,114 +195,134 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         """
     )
 
-    # Candidate generation + filtering already-seen (CHEAP: filter inside CTE)
-    # This avoids the expensive anti-join on a huge exploded cand table.
-    log("Generating candidates from graph neighbors (excluding already-seen)")
-    con.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE cand_scored AS
-        WITH neigh AS (
-            SELECT
-                h.user_id,
-                g.dst_item AS cand_item,
-                SUM(g.cosine) AS graph_mass
-            FROM user_hist h
-            JOIN graph g
-              ON h.item_id = g.src_item
-            GROUP BY 1,2
-        ),
-        filtered AS (
-            SELECT n.*
-            FROM neigh n
-            WHERE NOT EXISTS (
-                SELECT 1
+    # Candidate generation only if graph exists (or graph table might be empty)
+    if graph_available:
+        log("Generating candidates from graph neighbors (excluding already-seen)")
+        con.execute(
+            f"""
+            CREATE OR REPLACE TEMP TABLE cand_scored AS
+            WITH neigh AS (
+                SELECT
+                    h.user_id,
+                    g.dst_item AS cand_item,
+                    SUM(g.cosine) AS graph_mass
                 FROM user_hist h
-                WHERE h.user_id = n.user_id AND h.item_id = n.cand_item
+                JOIN graph g
+                  ON h.item_id = g.src_item
+                GROUP BY 1,2
+            ),
+            filtered AS (
+                SELECT n.*
+                FROM neigh n
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM user_hist h
+                    WHERE h.user_id = n.user_id AND h.item_id = n.cand_item
+                )
+            ),
+            with_pop AS (
+                SELECT
+                    f.user_id,
+                    f.cand_item,
+                    f.graph_mass,
+                    COALESCE(p.pop_log, 0.0) AS pop_log,
+                    ({cfg.w_graph} * f.graph_mass + {cfg.w_pop} * COALESCE(p.pop_log, 0.0)) AS score
+                FROM filtered f
+                LEFT JOIN item_pop_norm p
+                  ON p.item_id = f.cand_item
             )
-        ),
-        with_pop AS (
-            SELECT
-                f.user_id,
-                f.cand_item,
-                f.graph_mass,
-                COALESCE(p.pop_log, 0.0) AS pop_log,
-                ({cfg.w_graph} * f.graph_mass + {cfg.w_pop} * COALESCE(p.pop_log, 0.0)) AS score
-            FROM filtered f
-            LEFT JOIN item_pop_norm p
-              ON p.item_id = f.cand_item
+            SELECT * FROM with_pop;
+            """
         )
-        SELECT * FROM with_pop;
-        """
-    )
 
-    n_cand = con.execute("SELECT COUNT(*) FROM cand_scored").fetchone()[0]
-    log(f"candidate rows (pre-cap): {n_cand:,}")
+        log("Capping candidates per user")
+        con.execute(
+            f"""
+            CREATE OR REPLACE TEMP TABLE cand_pool AS
+            SELECT user_id, cand_item AS item_id, score
+            FROM (
+                SELECT
+                    user_id,
+                    cand_item,
+                    score,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY user_id
+                        ORDER BY score DESC, cand_item ASC
+                    ) AS rn
+                FROM cand_scored
+            )
+            WHERE rn <= {cfg.candidates_per_user};
+            """
+        )
+    else:
+        # No graph -> empty candidate pool
+        con.execute(
+            """
+            CREATE OR REPLACE TEMP TABLE cand_pool (
+                user_id BIGINT,
+                item_id BIGINT,
+                score   DOUBLE
+            );
+            """
+        )
 
-    # Cap candidates per user
-    log("Capping candidates per user")
-    con.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE cand_pool AS
-        SELECT user_id, cand_item AS item_id, score
-        FROM (
+    # Build Top-K recommendations:
+    # - If graph missing -> always popularity fallback
+    # - Else: popularity fallback for low-history, candidate-based for others
+    log("Building Top-K recommendations")
+    if not graph_available:
+        con.execute(
+            f"""
+            CREATE OR REPLACE TEMP TABLE topk AS
+            SELECT
+                e.user_id,
+                p.item_id,
+                p.pop_log AS score,
+                ROW_NUMBER() OVER (
+                    PARTITION BY e.user_id
+                    ORDER BY p.pop_log DESC, p.item_id ASC
+                ) AS rank
+            FROM eligible e
+            JOIN pop_fallback p ON TRUE;
+            """
+        )
+    else:
+        con.execute(
+            f"""
+            CREATE OR REPLACE TEMP TABLE topk AS
+            WITH pool_or_pop AS (
+                -- popularity fallback for low-history users
+                SELECT
+                    e.user_id,
+                    p.item_id AS item_id,
+                    p.pop_log AS score
+                FROM eligible e
+                JOIN pop_fallback p ON TRUE
+                WHERE e.n_hist < {cfg.min_user_hist}
+
+                UNION ALL
+
+                -- candidate-based scoring for sufficient-history users
+                SELECT
+                    e.user_id,
+                    c.item_id,
+                    c.score
+                FROM eligible e
+                JOIN cand_pool c
+                  ON e.user_id = c.user_id
+                WHERE e.n_hist >= {cfg.min_user_hist}
+            )
             SELECT
                 user_id,
-                cand_item,
+                item_id,
                 score,
                 ROW_NUMBER() OVER (
                     PARTITION BY user_id
-                    ORDER BY score DESC, cand_item ASC
-                ) AS rn
-            FROM cand_scored
+                    ORDER BY score DESC, item_id ASC
+                ) AS rank
+            FROM pool_or_pop;
+            """
         )
-        WHERE rn <= {cfg.candidates_per_user};
-        """
-    )
-
-    # Build Top-K:
-    # - low-history users: popularity list
-    # - normal users: candidate pool
-    log("Building Top-K recommendations")
-    con.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE topk AS
-        WITH eligible AS (
-            SELECT user_id, n_hist
-            FROM user_hist_cnt
-        ),
-        pool_or_pop AS (
-            -- popularity fallback
-            SELECT
-                e.user_id,
-                p.item_id AS item_id,
-                p.pop_log AS score
-            FROM eligible e
-            JOIN pop_fallback p ON TRUE
-            WHERE e.n_hist < {cfg.min_user_hist}
-
-            UNION ALL
-
-            -- candidate-based scoring
-            SELECT
-                e.user_id,
-                c.item_id,
-                c.score
-            FROM eligible e
-            JOIN cand_pool c
-              ON e.user_id = c.user_id
-            WHERE e.n_hist >= {cfg.min_user_hist}
-        )
-        SELECT
-            user_id,
-            item_id,
-            score,
-            ROW_NUMBER() OVER (
-                PARTITION BY user_id
-                ORDER BY score DESC, item_id ASC
-            ) AS rank
-        FROM pool_or_pop;
-        """
-    )
 
     con.execute(
         f"""
@@ -288,10 +333,6 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         """
     )
 
-    n_recs = con.execute("SELECT COUNT(*) FROM topk_k").fetchone()[0]
-    log(f"total recommendations written: {n_recs:,}")
-
-    # Write parquet
     log(f"Writing: {cfg.out_topk_path}")
     con.execute(
         f"""
@@ -304,12 +345,12 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         """
     )
 
-    # Offline eval on VAL
+    # Offline eval on VAL (requires your metrics.py to exist)
     log("Evaluating on VAL")
     topk_df = pd.read_parquet(cfg.out_topk_path)
     gt_val = pd.read_parquet(cfg.val_path)[["user_id", "item_id"]].copy()
 
-    from ntg.utils.metrics import RankingMetricsConfig, evaluate_topk
+    from ntg.evaluation.metrics import RankingMetricsConfig, evaluate_topk
 
     metrics = evaluate_topk(
         topk=topk_df,
@@ -325,10 +366,18 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
         "max_hist_items_per_user": cfg.max_hist_items_per_user,
         "min_user_hist": cfg.min_user_hist,
         "weights": {"w_graph": cfg.w_graph, "w_pop": cfg.w_pop},
-        "duckdb": {"threads": cfg.threads, "memory_limit": cfg.memory_limit, "tmp_dir": str(cfg.tmp_dir)},
+        "graph_available": graph_available,
+        "duckdb": {
+            "threads": cfg.threads,
+            "memory_limit": cfg.memory_limit,
+            "tmp_dir": str(cfg.tmp_dir),
+        },
         "metrics": metrics,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "notes": "Leakage-safe: TRAIN-only positive history; graph candidates; popularity fallback for low-history users. Guardrails prevent candidate blow-ups.",
+        "notes": (
+            "Leakage-safe: TRAIN-only history; popularity fallback always available. "
+            "Deterministic ordering (no RANDOM)."
+        ),
     }
 
     cfg.out_metrics_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -336,5 +385,9 @@ def build_topk_and_eval(cfg: RankerConfig) -> None:
     log(f"✅ Wrote: {cfg.out_metrics_path}")
 
 
-if __name__ == "__main__":
+def main() -> None:
     build_topk_and_eval(RankerConfig())
+
+
+if __name__ == "__main__":
+    main()

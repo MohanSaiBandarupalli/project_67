@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 import duckdb
 
@@ -28,6 +29,25 @@ def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
+def _parquet_columns(con: duckdb.DuckDBPyConnection, path: Path) -> list[str]:
+    """
+    Return column names for a parquet file using DuckDB.
+    """
+    rows = con.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{path.as_posix()}')"
+    ).fetchall()
+    # DESCRIBE returns rows like: (column_name, type, null, key, default, extra)
+    return [r[0] for r in rows]
+
+
+def _pick_first(existing: Iterable[str], candidates: Iterable[str]) -> str | None:
+    existing_set = set(existing)
+    for c in candidates:
+        if c in existing_set:
+            return c
+    return None
+
+
 def build_revenue_risk(cfg: RevenueRiskConfig) -> None:
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     Path("reports").mkdir(parents=True, exist_ok=True)
@@ -44,23 +64,50 @@ def build_revenue_risk(cfg: RevenueRiskConfig) -> None:
 
     _log("=== Day-7: Revenue Risk Radar ===")
 
+    # --- Detect churn prob column (supports multiple schemas) ---
+    churn_cols = _parquet_columns(con, cfg.churn_scores_path)
+    # Prefer your project conventions first; include current observed "churn_prob"
+    churn_prob_col = _pick_first(
+        churn_cols,
+        candidates=["p_churn", "churn_prob", "prob_churn", "p", "probability", "score"],
+    )
+    if churn_prob_col is None:
+        raise ValueError(
+            f"Could not find churn probability column in {cfg.churn_scores_path}. "
+            f"Found columns: {churn_cols}. "
+            f"Expected one of: p_churn, churn_prob, prob_churn, probability, score."
+        )
+
+    # user_id should exist; still keep it strict for sanity
+    if "user_id" not in set(churn_cols):
+        raise ValueError(
+            f"Missing required column 'user_id' in {cfg.churn_scores_path}. "
+            f"Found columns: {churn_cols}"
+        )
+
+    # NOTE: Qualify columns with a table alias to avoid DuckDB binder ambiguity.
     con.execute(
         f"""
         CREATE OR REPLACE VIEW churn AS
-        SELECT CAST(user_id AS BIGINT) AS user_id, CAST(p_churn AS DOUBLE) AS p_churn
-        FROM read_parquet('{cfg.churn_scores_path.as_posix()}');
+        SELECT
+            CAST(t.user_id AS BIGINT) AS user_id,
+            CAST(t.{churn_prob_col} AS DOUBLE) AS p_churn
+        FROM read_parquet('{cfg.churn_scores_path.as_posix()}') AS t;
         """
     )
+
+    # --- LTV view (qualify with alias too) ---
     con.execute(
         f"""
         CREATE OR REPLACE VIEW ltv AS
-        SELECT CAST(user_id AS BIGINT) AS user_id,
-               CAST(ltv_usd AS DOUBLE) AS ltv_usd,
-               CAST(expected_months AS BIGINT) AS expected_months,
-               CAST(n_interactions AS BIGINT) AS n_interactions,
-               CAST(n_distinct_items AS BIGINT) AS n_distinct_items,
-               CAST(recency_days AS DOUBLE) AS recency_days
-        FROM read_parquet('{cfg.ltv_path.as_posix()}');
+        SELECT
+            CAST(t.user_id AS BIGINT) AS user_id,
+            CAST(t.ltv_usd AS DOUBLE) AS ltv_usd,
+            CAST(t.expected_months AS BIGINT) AS expected_months,
+            CAST(t.n_interactions AS BIGINT) AS n_interactions,
+            CAST(t.n_distinct_items AS BIGINT) AS n_distinct_items,
+            CAST(t.recency_days AS DOUBLE) AS recency_days
+        FROM read_parquet('{cfg.ltv_path.as_posix()}') AS t;
         """
     )
 
@@ -138,6 +185,11 @@ def build_revenue_risk(cfg: RevenueRiskConfig) -> None:
         "high_critical_risk_usd": float(summary[4]),
         "top_frac": cfg.top_frac,
         "notes": "Revenue Risk = P(churn) * LTV proxy. Prototype uses MovieLens behavior; in production replace LTV with billing.",
+        "schema": {
+            "churn_prob_source_column": churn_prob_col,
+            "churn_scores_path": str(cfg.churn_scores_path),
+            "ltv_path": str(cfg.ltv_path),
+        },
     }
     cfg.out_summary_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
 
