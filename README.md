@@ -3,7 +3,7 @@
 
 ---
 
-## 📌 Executive Summary
+##  Executive Summary
 
 **Neural Taste Graph (NTG)** is an end-to-end, production-inspired machine learning system designed to demonstrate **FAANG / Netflix-level ML engineering rigor**.
 
@@ -18,7 +18,7 @@ The system emphasizes:
 
 ---
 
-## 🎯 Problem Framing (Production Science Perspective)
+##  Problem Framing (Production Science Perspective)
 
 Most ML projects ask:
 > *“How do we build the best model?”*
@@ -31,9 +31,9 @@ This framing mirrors **Production Science teams**, where:
 - Offline correctness matters more than optimistic metrics
 - Evaluation, calibration, and interpretability are first-class concerns
 
----
 
-## 🧠 What NTG Does (End-to-End)
+
+##  What NTG Does (End-to-End)
 
 NTG builds an **offline ML decision pipeline** that transforms raw interaction data into:
 
@@ -50,7 +50,7 @@ These outputs are structured to plug into:
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ### High-Level Pipeline
 
@@ -87,9 +87,9 @@ Decision Artifacts
 • Calibration & metrics
 
 
----
 
-## 🔐 Leakage Safety (Critical Design Principle)
+
+##  Leakage Safety (Critical Design Principle)
 
 All modeling decisions in NTG enforce **strict temporal correctness**:
 
@@ -105,7 +105,7 @@ This mirrors real Production Science review standards.
 
 ---
 
-## 🧩 Key Components
+##  Key Components
 
 ### 1️ Data Ingestion & Splitting
 - DuckDB used as the analytical engine
@@ -170,7 +170,7 @@ outputs/ranking/
 
 
 
-### 6️⃣ Churn Risk Modeling
+### 6️ Churn Risk Modeling
 - Inactivity-based churn labeling
 - Supervised churn probability estimation
 - Evaluation & calibration reports
@@ -181,7 +181,7 @@ outputs/churn/
 
 
 
-### 7️⃣ Evaluation & Calibration
+### 7️ Evaluation & Calibration
 - Metrics reported as versioned JSON artifacts
 - Calibration curves & Expected Calibration Error (ECE)
 - Schema validation for downstream consumers
@@ -267,7 +267,9 @@ Repository Structure
 ├── Dockerfile
 ├── Makefile
 └── README.md
+
 Outputs
+
 After a successful run:
 
 data/features/*.parquet – engineered features
