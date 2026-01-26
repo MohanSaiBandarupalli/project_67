@@ -1,148 +1,261 @@
-Neural Taste Graph (NTG)
+# 🎬 Neural Taste Graph (NTG)
+### A Production Science–Style Machine Learning Platform for Personalization, Retention & Decision Intelligence
 
-A production-inspired personalization & decision intelligence platform
+---
 
-End-to-end machine learning system for personalized ranking, churn risk estimation, and revenue impact analysis, built with leakage-safe pipelines, scalable graph computation, and reproducible experimentation.
+## 📌 Executive Summary
 
-Why this project exists
+**Neural Taste Graph (NTG)** is an end-to-end, production-inspired machine learning system designed to demonstrate **FAANG / Netflix-level ML engineering rigor**.
 
-Modern streaming platforms (e.g., Netflix-like systems) do not rely on a single recommender model.
-They operate decision platforms that combine:
+Unlike typical recommender demos, NTG is built as a **decision-support platform**, reflecting how ML is actually used inside organizations like Netflix—to inform **personalization, retention, experimentation, and financial planning**.
 
-User taste modeling
+The system emphasizes:
+- Leakage-safe data pipelines
+- Scalable analytics (DuckDB + Parquet)
+- Interpretable representations before complex models
+- Reproducibility, observability, and evaluation
+- End-to-end ownership from raw data to decision artifacts
 
-Item similarity graphs
+---
 
-Personalized ranking
+## 🎯 Problem Framing (Production Science Perspective)
 
-Churn & retention risk
+Most ML projects ask:
+> *“How do we build the best model?”*
 
-Revenue / LTV impact
+NTG asks:
+> *“How do we design ML systems whose outputs decision-makers can trust?”*
 
-Experiment-aware evaluation
+This framing mirrors **Production Science teams**, where:
+- ML augments human decisions
+- Offline correctness matters more than optimistic metrics
+- Evaluation, calibration, and interpretability are first-class concerns
 
-Neural Taste Graph (NTG) is a production-grade prototype of such a system, designed to demonstrate FAANG-level ML engineering rigor, not just model accuracy.
+---
 
-What NTG does (end-to-end)
+## 🧠 What NTG Does (End-to-End)
 
-NTG builds a leakage-safe personalization pipeline over implicit & explicit feedback data:
+NTG builds an **offline ML decision pipeline** that transforms raw interaction data into:
 
-Data ingestion (DuckDB + Parquet)
+- Personalized ranking scores
+- User taste representations
+- Churn risk probabilities
+- Revenue / retention risk signals
+- Evaluation & calibration reports
 
-Efficient, scalable processing of large interaction datasets
+These outputs are structured to plug into:
+- Experimentation frameworks
+- Analyst workflows
+- Planning and prioritization processes
 
-Chronological train / validation / test splits
+---
 
-Prevents temporal leakage by construction
+## 🏗️ System Architecture
 
-Feature engineering
+### High-Level Pipeline
 
-User, item, and interaction-level features
+Raw Interaction Events
+│
+▼
+DuckDB Ingestion (SQL + Parquet)
+│
+▼
+Chronological Train / Validation / Test Splits
+(Leakage-Safe by Construction)
+│
+├──► Feature Engineering
+│ • User aggregates
+│ • Recency & frequency signals
+│ • Item statistics
+│
+├──► Item–Item Similarity Graph
+│ • Co-occurrence modeling
+│ • Scale guardrails
+│
+├──► Taste Representation
+│ • Interpretable taste axes
+│ • Optional latent embeddings
+│
+├──► Personalized Ranking
+│
+├──► Churn Risk Modeling
+│
+▼
+Decision Artifacts
+• Ranked candidates
+• Churn probabilities
+• Calibration & metrics
 
-Aggregates, recency signals, and activity statistics
 
-Item-Item Graph Construction
+---
 
-Co-occurrence-based similarity graph with strict guardrails
+## 🔐 Leakage Safety (Critical Design Principle)
 
-Taste Representation
+All modeling decisions in NTG enforce **strict temporal correctness**:
 
-Interpretable “taste axes” (PCA-style latent preferences)
+- Chronological splits are performed once and reused everywhere
+- **Only TRAIN data** is used to:
+  - Build features
+  - Construct graphs
+  - Learn embeddings
+  - Define churn labels
+- Validation and test data are **never** used for feature generation
 
-Optional embedding-based representations
+This mirrors real Production Science review standards.
 
-Personalized Ranking
+---
 
-Score users against candidate items
+## 🧩 Key Components
 
-Churn Risk Modeling
+### 1️ Data Ingestion & Splitting
+- DuckDB used as the analytical engine
+- Parquet as the storage format
+- Deterministic, time-aware splits
+- Scales beyond pandas-only workflows
 
-Inactivity-based churn labels
+**Location**
+src/ntg/pipelines/build_dataset_duckdb.py
+data/processed/splits/
 
-Predictive churn probability
 
-Decision Outputs
+---
 
-Ranked recommendations
+### 2️ Feature Engineering
+- User-level aggregates (activity, recency, variance)
+- Item-level statistics
+- Interaction-level signals
+- Feature manifest with metadata
 
-User-level churn & revenue risk
+**Location**
+src/ntg/features/
+data/features/
 
-Evaluation & Calibration
 
-Metrics, calibration curves, and reliability diagnostics
 
-Reproducible orchestration
 
-One-command end-to-end execution
+### 3️ Item–Item Similarity Graph
+- Co-occurrence-based similarity
+- Power-user guardrails
+- Top-K pruning to avoid quadratic blowups
 
-System Architecture
-Raw Events
-   │
-   ▼
-DuckDB Ingestion
-   │
-   ▼
-Chronological Splits (Leakage-Safe)
-   │
-   ├──► Feature Engineering
-   │        ├── User Features
-   │        ├── Item Features
-   │        └── Interaction Features
-   │
-   ├──► Item-Item Similarity Graph
-   │
-   ├──► Taste Representation
-   │        ├── Interpretable Axes
-   │        └── (Optional) Embeddings
-   │
-   ├──► Personalized Ranking
-   │
-   ├──► Churn Modeling
-   │
-   ▼
-Decision Outputs
-   ├── Ranked Items
-   ├── Churn Probability
-   └── Revenue Risk Signals
+**Location**
+src/ntg/graph/
+outputs/graph/
 
-Design principles (Netflix / FAANG aligned)
 
-Leakage-safe by construction
-All labels, features, and graphs are derived strictly from TRAIN data.
 
-Scalable primitives
-DuckDB + Parquet used instead of pandas-only workflows.
 
-Deterministic & reproducible
-Same config → same outputs.
+### 4️ Taste Representation
+- Interpretable “taste axes” derived from behavior
+- Optional latent embeddings (SVD-based)
+- Designed for explainability before complexity
 
-Interpretable first
-Taste axes & aggregates are explainable before embeddings.
+**Location**
+src/ntg/features/taste_axes.py
+src/ntg/embeddings/
+outputs/embeddings/
 
-Experiment-aware
-Outputs structured for offline evaluation & A/B testing.
 
-Production realism
-CI, configs, manifests, logging, and CLI included.
 
-Repository structure
+
+### 5️ Personalized Ranking
+- Candidate scoring using learned representations
+- Deterministic outputs
+- Designed for offline evaluation & experimentation
+
+**Location**
+src/ntg/ranking/
+outputs/ranking/
+
+
+
+
+### 6️⃣ Churn Risk Modeling
+- Inactivity-based churn labeling
+- Supervised churn probability estimation
+- Evaluation & calibration reports
+
+**Location**
+src/ntg/churn/
+outputs/churn/
+
+
+
+### 7️⃣ Evaluation & Calibration
+- Metrics reported as versioned JSON artifacts
+- Calibration curves & Expected Calibration Error (ECE)
+- Schema validation for downstream consumers
+
+**Location**
+src/ntg/evaluation/
+outputs/reports/
+
+
+
+
+##  Configuration & Reproducibility
+
+NTG is **fully config-driven**.
+
+configs/
+├── base.yaml
+├── dev.yaml
+└── prod.yaml
+
+
+- Environment-specific overrides
+- Deterministic reruns
+- CI uses dev config for stability
+
+---
+
+##  Command-Line Interface
+
+A real CLI is provided to mirror internal tooling.
+
+### Run everything
+```bash
+poetry run ntg run-all
+Run step-by-step
+poetry run ntg build-dataset
+poetry run ntg build-features
+poetry run ntg build-graph
+poetry run ntg rank
+poetry run ntg score-users
+Use a specific config
+poetry run ntg --config configs/dev.yaml run-all
+Testing & CI
+Test Coverage
+Unit tests: schemas, metrics, leakage checks
+
+Integration tests: pipeline smoke tests
+
+poetry run pytest
+CI Signals
+Fast unit tests on PRs
+
+Nightly end-to-end pipeline on synthetic data
+
+Deterministic failures for regressions
+
+Repository Structure
 .
-├── configs/                 # base / dev / prod configs
+├── configs/
 ├── data/
-│   ├── external/            # raw datasets (e.g., MovieLens)
-│   ├── processed/           # leakage-safe splits
-│   └── features/            # engineered features
+│   ├── external/
+│   ├── processed/
+│   └── features/
 ├── outputs/
-│   ├── graph/               # item-item similarity graph
-│   ├── embeddings/          # learned representations
-│   ├── churn/               # churn predictions
-│   └── reports/             # metrics & calibration
-├── reports/figures/         # generated plots
+│   ├── graph/
+│   ├── embeddings/
+│   ├── churn/
+│   └── reports/
+├── reports/figures/
 ├── src/ntg/
-│   ├── cli.py               # ntg command-line interface
-│   ├── settings.py          # config loader
+│   ├── cli.py
+│   ├── settings.py
 │   ├── logging.py
-│   ├── pipelines/           # orchestration
+│   ├── pipelines/
 │   ├── features/
 │   ├── graph/
 │   ├── embeddings/
@@ -154,72 +267,32 @@ Repository structure
 ├── Dockerfile
 ├── Makefile
 └── README.md
-
-Installation
-git clone <repo>
-cd project_67
-poetry install
-
-▶Usage
-Run the full pipeline
-poetry run ntg run-all
-
-Run step-by-step
-poetry run ntg build-dataset
-poetry run ntg build-features
-poetry run ntg build-graph
-poetry run ntg rank
-poetry run ntg score-users
-
-Use a specific config
-poetry run ntg --config configs/dev.yaml run-all
-
 Outputs
-
 After a successful run:
-
-outputs/graph/item_item.parquet – item similarity graph
 
 data/features/*.parquet – engineered features
 
-outputs/embeddings/*.parquet – item embeddings
+outputs/graph/*.parquet – similarity graph
 
-outputs/churn/churn_scores.parquet – churn probabilities
+outputs/embeddings/*.parquet – embeddings
 
-outputs/reports/*.json – metrics, calibration, metadata
+outputs/churn/*.parquet – churn scores
+
+outputs/reports/*.json – metrics & calibration
 
 reports/figures/ – diagnostic plots
 
-Testing & CI
+Dataset Note
+MovieLens is used only as a public proxy.
 
-Unit tests: schema, metrics, leakage checks
+This project is not about movie ratings.
 
-Integration tests: pipeline smoke tests
+It is about:
 
-Nightly CI: end-to-end synthetic dataset run
+Personalization system design
 
-poetry run pytest
+Retention modeling patterns
 
-Dataset note
+Decision-oriented ML pipelines
 
-MovieLens is used only as a public proxy for demonstrating:
-
-personalization pipelines
-
-graph construction
-
-churn modeling patterns
-
-The system design is dataset-agnostic and applies to real production event logs.
-
-Scope & non-goals
-
-This project intentionally does not include:
-
-Online serving infrastructure
-
-Real-time feature stores
-
-Live A/B experimentation systems
-
-Focus is on offline ML decision pipelines,
+All architectural choices generalize directly to real production event data.
