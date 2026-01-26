@@ -5,7 +5,7 @@
 
 ##  Executive Summary
 
-**Neural Taste Graph (NTG)** is an end-to-end, production-inspired machine learning system designed to demonstrate **FAANG / Netflix-level ML engineering rigor**.
+**Neural Taste Graph (NTG)** is an end-to-end, production-inspired machine learning system designed to demonstrate ** ML engineering rigor**.
 
 Unlike typical recommender demos, NTG is built as a **decision-support platform**, reflecting how ML is actually used inside organizations like Netflix—to inform **personalization, retention, experimentation, and financial planning**.
 
