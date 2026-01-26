@@ -289,7 +289,7 @@ reports/figures/ – diagnostic plots
 
 --- 
 
-# Dataset Note
+## Dataset Note
 MovieLens is used only as a public proxy.
 
 This project is not about movie ratings.
@@ -306,7 +306,7 @@ All architectural choices generalize directly to real production event data.
 
 ---
 
-## Conclusion & Positioning
+# Conclusion & Positioning
 
 Neural Taste Graph (NTG) was intentionally designed not as a single recommender model, but as a Production Science–style machine learning platform.
 
