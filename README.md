@@ -192,8 +192,7 @@ outputs/churn/
 src/ntg/evaluation/
 outputs/reports/
 
-
-
+---
 
 ##  Configuration & Reproducibility
 
@@ -270,6 +269,8 @@ Repository Structure
 ├── Makefile
 └── README.md
 
+```bash 
+
 Outputs
 
 After a successful run:
@@ -286,6 +287,8 @@ outputs/reports/*.json – metrics & calibration
 
 reports/figures/ – diagnostic plots
 
+--- 
+
 Dataset Note
 MovieLens is used only as a public proxy.
 
@@ -300,3 +303,5 @@ Retention modeling patterns
 Decision-oriented ML pipelines
 
 All architectural choices generalize directly to real production event data.
+
+
