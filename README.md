@@ -55,36 +55,50 @@ These outputs are structured to plug into:
 ### High-Level Pipeline
 
 Raw Interaction Events
-│
-▼
-DuckDB Ingestion (SQL + Parquet)
-│
-▼
+        │
+        ▼
+DuckDB Ingestion
+(SQL + Parquet, scalable analytics)
+        │
+        ▼
 Chronological Train / Validation / Test Splits
-(Leakage-Safe by Construction)
-│
-├──► Feature Engineering
-│ • User aggregates
-│ • Recency & frequency signals
-│ • Item statistics
-│
-├──► Item–Item Similarity Graph
-│ • Co-occurrence modeling
-│ • Scale guardrails
-│
-├──► Taste Representation
-│ • Interpretable taste axes
-│ • Optional latent embeddings
-│
-├──► Personalized Ranking
-│
-├──► Churn Risk Modeling
-│
-▼
+(Leakage-safe by construction)
+        │
+        ├──► Feature Engineering
+        │        • User aggregates
+        │        • Recency & frequency signals
+        │        • Item statistics
+        │
+        ├──► Item–Item Similarity Graph
+        │        • Co-occurrence modeling
+        │        • Scale guardrails (power-user caps, top-K pruning)
+        │
+        ├──► Taste Representation
+        │        • Interpretable taste axes
+        │        • Optional latent embeddings
+        │
+        ├──► Personalized Ranking
+        │
+        ├──► Churn Risk Modeling
+        │
+        ▼
 Decision Artifacts
-• Ranked candidates
-• Churn probabilities
-• Calibration & metrics
+        • Ranked content candidates
+        • Churn probabilities
+        • Calibration curves & metrics
+
+
+
+flowchart TD
+    A[Raw Interaction Events] --> B[DuckDB Ingestion]
+    B --> C[Chronological Splits<br/>(Leakage-Safe)]
+    C --> D[Feature Engineering]
+    D --> E[Item-Item Similarity Graph]
+    E --> F[Taste Representation]
+    F --> G[Personalized Ranking]
+    G --> H[Churn Risk Modeling]
+    H --> I[Decision Artifacts]
+
 
 
 
