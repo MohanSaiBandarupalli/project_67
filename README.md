@@ -91,18 +91,6 @@ Decision Artifacts
 
 
 
-flowchart TD
-    A[Raw Interaction Events] --> B[DuckDB Ingestion]
-    B --> C[Chronological Splits<br/>(Leakage-Safe)]
-    C --> D[Feature Engineering]
-    D --> E[Item-Item Similarity Graph]
-    E --> F[Taste Representation]
-    F --> G[Personalized Ranking]
-    G --> H[Churn Risk Modeling]
-    H --> I[Decision Artifacts]
-
-
-
 ##  Leakage Safety (Critical Design Principle)
 
 All modeling decisions in NTG enforce **strict temporal correctness**:
