@@ -53,7 +53,7 @@ These outputs are structured to plug into:
 ##  System Architecture
 
 ### High-Level Pipeline
-
+```text
 Raw Interaction Events
         │
         ▼
@@ -87,6 +87,8 @@ Decision Artifacts
         • Churn probabilities
         • Calibration curves & metrics
 
+```
+
 
 
 flowchart TD
@@ -98,8 +100,6 @@ flowchart TD
     F --> G[Personalized Ranking]
     G --> H[Churn Risk Modeling]
     H --> I[Decision Artifacts]
-
-
 
 
 

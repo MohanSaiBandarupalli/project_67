@@ -47,9 +47,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-venv-
 
-      - name: Install dependencies
+      - name: Install dependencies (incl. dev for pytest)
         run: |
-          poetry install --no-interaction --no-ansi
+          poetry install --with dev --no-interaction --no-ansi
+
+      - name: Sanity check pytest is installed
+        run: |
+          poetry run python -c "import pytest; print('pytest', pytest.__version__)"
 
       - name: Run CI-safe unit tests (no dataset required)
         run: |
@@ -63,4 +67,3 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t ntg:ci .
-          
