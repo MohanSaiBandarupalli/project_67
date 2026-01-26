@@ -43,21 +43,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: ${{ runner.os }}-venv-${{ hashFiles('**/poetry.lock') }}
+          key: ${{ runner.os }}-venv-v2-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            ${{ runner.os }}-venv-
+            ${{ runner.os }}-venv-v2-
 
       - name: Install dependencies (incl. dev for pytest)
         run: |
           poetry install --with dev --no-interaction --no-ansi
 
-      - name: Sanity check pytest is installed
+      - name: Verify pytest works
         run: |
-          poetry run python -c "import pytest; print('pytest', pytest.__version__)"
+          poetry run python -m pytest --version
 
       - name: Run CI-safe unit tests (no dataset required)
         run: |
-          poetry run pytest -q -m "not integration" \
+          poetry run python -m pytest -q -m "not integration" \
             --ignore=tests/unit/pipelines \
             --ignore=tests/unit/features \
             --ignore=tests/unit/graph \
