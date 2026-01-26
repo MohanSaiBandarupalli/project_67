@@ -269,7 +269,7 @@ Repository Structure
 ├── Makefile
 └── README.md
 
-```bash 
+``` 
 
 Outputs
 
@@ -289,7 +289,7 @@ reports/figures/ – diagnostic plots
 
 --- 
 
-Dataset Note
+# Dataset Note
 MovieLens is used only as a public proxy.
 
 This project is not about movie ratings.
@@ -304,4 +304,20 @@ Decision-oriented ML pipelines
 
 All architectural choices generalize directly to real production event data.
 
+---
 
+## Conclusion & Positioning
+
+Neural Taste Graph (NTG) was intentionally designed not as a single recommender model, but as a Production Science–style machine learning platform.
+
+The project demonstrates how modern ML systems should be built when the goal is decision support, not leaderboard performance:
+
+Models are leakage-safe by construction
+
+Pipelines are reproducible, observable, and testable
+
+Outputs are structured to support experimentation, retention strategy, and planning
+
+Interpretability and calibration are treated as first-class requirements
+
+This mirrors how ML is applied in real-world environments
