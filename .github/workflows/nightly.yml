@@ -50,7 +50,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --no-interaction --no-ansi
+          poetry install --no-interaction --no-ansi --with dev
 
       - name: Show environment info
         run: |
@@ -58,7 +58,7 @@ jobs:
           poetry run python -V
           poetry run python -c "import sys; print(sys.executable)"
 
-      # ✅ Create tiny synthetic MovieLens-like dataset at the EXACT path your pipeline expects
+      #  Create tiny synthetic MovieLens-like dataset at the EXACT path your pipeline expects
       - name: Create tiny MovieLens dataset (CI)
         shell: bash
         run: |
@@ -126,7 +126,7 @@ jobs:
           print("Wrote:", ratings_path, movies_path, tags_path, links_path)
           PY
 
-      # ✅ Full pipeline execution (fail if a stage fails)
+      #  Full pipeline execution (fail if a stage fails)
       - name: Run NTG pipeline end-to-end
         shell: bash
         run: |
@@ -152,7 +152,7 @@ jobs:
             poetry run python -m ntg.churn.score_users
           fi
 
-      # ✅ Run tests after artifacts exist (so pipeline contract tests pass)
+      #  Run tests after artifacts exist (so pipeline contract tests pass)
       - name: Run tests (unit only)
         run: |
           poetry run pytest -q -m "not integration"
